@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="sv">
 <head>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Tour de Nerja – Admin</title>
@@ -795,6 +796,11 @@ input[type="color"]{
 
 <script>
 (function(){
+  const SUPABASE_URL = "https://sjquderacxhbrewlndnh.supabase.co";
+  const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqcXVkZXJhY3hoYnJld2xuZG5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxMTQ5MTMsImV4cCI6MjA4NzY5MDkxM30.6kS_RzELUCMz0LuPgSbdHPG8TAfvRnNkzsjWgf9mTgo";
+  
+  const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  
   const KEY = 'tdn_admin_state_v2';
 
   const teamList = document.getElementById('teamList');
@@ -889,7 +895,10 @@ input[type="color"]{
   }
 
   function save(state){
-    localStorage.setItem(KEY, JSON.stringify(state));
+    await supabase
+    .from("tdn_state")
+    .update({ state: state })
+    .eq("id", "live");
   }
 
   function sanitizeState(state){
