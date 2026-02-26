@@ -378,11 +378,12 @@ input[type="color"]{
 .scoretable tbody tr:last-child td{border-bottom:0}
 .scoretable th:first-child,.scoretable td:first-child{text-align:left}
 
+/* FIX: rätt antal kolumner */
 #lagStatsBlock .scoretable, #playerStatsBlock .scoretable{table-layout:fixed}
 #lagStatsBlock .scoretable th:first-child, #lagStatsBlock .scoretable td:first-child{width: 26%}
-#lagStatsBlock .scoretable th:not(:first-child), #lagStatsBlock .scoretable td:not(:first-child){width: calc(74% / 6)}
+#lagStatsBlock .scoretable th:not(:first-child), #lagStatsBlock .scoretable td:not(:first-child){width: calc(74% / 7)}
 #playerStatsBlock .scoretable th:first-child, #playerStatsBlock .scoretable td:first-child{width: 26%}
-#playerStatsBlock .scoretable th:not(:first-child), #playerStatsBlock .scoretable td:not(:first-child){width: calc(74% / 14)}
+#playerStatsBlock .scoretable th:not(:first-child), #playerStatsBlock .scoretable td:not(:first-child){width: calc(74% / 13)}
 #playerStatsBlock thead th{white-space:normal;word-break:break-word;overflow-wrap:anywhere;line-height:1.15;padding-top:8px;padding-bottom:8px}
 
 .team-dot{
@@ -420,10 +421,7 @@ input[type="color"]{
   outline:none;
 }
 .editor-select:hover{filter:brightness(1.06)}
-.editor-select option{
-  color:#000;
-  background:#fff;
-}
+.editor-select option{color:#000;background:#fff}
 .editor-btn:hover{filter:brightness(1.06)}
 .editor-sep{
   width:1px;
@@ -452,7 +450,8 @@ input[type="color"]{
   font-weight:600;
 }
 </style>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
 <body>
@@ -574,7 +573,6 @@ input[type="color"]{
       </div>
     </section>
 
-
     <section class="block" id="competitionInfoBlock" style="display:none">
       <div class="section-head" style="margin-bottom:12px">
         <div class="section-title">Tävlingsinformation</div>
@@ -625,7 +623,6 @@ input[type="color"]{
 
       <div id="competitionInfoEditor" class="editor" contenteditable="true" spellcheck="true"
            aria-label="Tävlingsinformation (fritext)"></div>
-      </div>
     </section>
 
   </section>
@@ -798,9 +795,8 @@ input[type="color"]{
 (function(){
   const SUPABASE_URL = "https://sjquderacxhbrewlndnh.supabase.co";
   const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNqcXVkZXJhY3hoYnJld2xuZG5oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxMTQ5MTMsImV4cCI6MjA4NzY5MDkxM30.6kS_RzELUCMz0LuPgSbdHPG8TAfvRnNkzsjWgf9mTgo";
-  
   const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  
+
   const KEY = 'tdn_admin_state_v2';
 
   const teamList = document.getElementById('teamList');
@@ -877,30 +873,6 @@ input[type="color"]{
     return Math.random().toString(16).slice(2) + Date.now().toString(16);
   }
 
-  function load(){
-    try{
-      const raw = localStorage.getItem(KEY);
-      if(!raw) return {teams:[], players:[], rounds:[], matches:[], competitionInfoHtml:''};
-      const d = JSON.parse(raw);
-      if(!d || typeof d !== 'object') return {teams:[], players:[], rounds:[], matches:[], competitionInfoHtml:''};
-      d.teams = Array.isArray(d.teams) ? d.teams : [];
-      d.players = Array.isArray(d.players) ? d.players : [];
-      d.rounds = Array.isArray(d.rounds) ? d.rounds : [];
-      d.matches = Array.isArray(d.matches) ? d.matches : [];
-      d.competitionInfoHtml = (typeof d.competitionInfoHtml === 'string') ? d.competitionInfoHtml : '';
-      return sanitizeState(d);
-    }catch(e){
-      return {teams:[], players:[], rounds:[], matches:[], competitionInfoHtml:''};
-    }
-  }
-
-  function save(state){
-    await supabase
-    .from("tdn_state")
-    .update({ state: state })
-    .eq("id", "live");
-  }
-
   function sanitizeState(state){
     state = state && typeof state === 'object'
       ? state
@@ -939,6 +911,46 @@ input[type="color"]{
     });
 
     return state;
+  }
+
+  function loadLocal(){
+    try{
+      const raw = localStorage.getItem(KEY);
+      if(!raw) return {teams:[], players:[], rounds:[], matches:[], competitionInfoHtml:''};
+      const d = JSON.parse(raw);
+      return sanitizeState(d);
+    }catch(e){
+      return {teams:[], players:[], rounds:[], matches:[], competitionInfoHtml:''};
+    }
+  }
+
+  // FIX: Async save + spara även localStorage (så index.html kan läsa)
+  async function save(state){
+    try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(_){}
+
+    const { error } = await supabase
+      .from("tdn_state")
+      .upsert({ id: "live", state }, { onConflict: "id" });
+
+    if(error) console.error("Supabase save error:", error);
+  }
+
+  // FIX: Hämta remote först (fallback local)
+  async function loadRemoteOrLocal(){
+    try{
+      const { data, error } = await supabase
+        .from("tdn_state")
+        .select("state")
+        .eq("id", "live")
+        .single();
+
+      if(!error && data && data.state){
+        const s = sanitizeState(data.state);
+        try{ localStorage.setItem(KEY, JSON.stringify(s)); }catch(_){}
+        return s;
+      }
+    }catch(_){}
+    return loadLocal();
   }
 
   function openModal(el){
@@ -1283,7 +1295,7 @@ input[type="color"]{
   }
 
   function openAddMatchForRound(roundId){
-    const state = load();
+    const state = loadLocal();
     sortTeamsAndPlayers2Lag(state);
 
     editingMatchId = null;
@@ -1325,7 +1337,7 @@ input[type="color"]{
   }
 
   function openEditMatch(matchId){
-    const state = load();
+    const state = loadLocal();
     sortTeamsAndPlayers2Lag(state);
 
     const m = state.matches.find(x => x.id === matchId);
@@ -1374,7 +1386,7 @@ input[type="color"]{
   }
 
   function openBookMatch(matchId){
-    const state = load();
+    const state = loadLocal();
     sortTeamsAndPlayers2Lag(state);
 
     const m = state.matches.find(x => x.id === matchId);
@@ -1578,7 +1590,7 @@ input[type="color"]{
   }
 
   function openEditTeam(id){
-    const state = load();
+    const state = loadLocal();
     const t = state.teams.find(x => x.id === id);
     if(!t) return;
 
@@ -1591,7 +1603,7 @@ input[type="color"]{
   }
 
   function openEditPlayer(id){
-    const state = load();
+    const state = loadLocal();
     const p = state.players.find(x => x.id === id);
     if(!p) return;
 
@@ -1603,7 +1615,7 @@ input[type="color"]{
   }
 
   function openAddPlayerForTeam(teamId){
-    const state = load();
+    const state = loadLocal();
     const t = state.teams.find(x => x.id === teamId);
 
     addingPlayerTeamId = teamId || '';
@@ -1617,7 +1629,7 @@ input[type="color"]{
   }
 
   function openEditRound(roundId){
-    const state = load();
+    const state = loadLocal();
     const r = state.rounds.find(x => x.id === roundId);
     if(!r) return;
 
@@ -1630,7 +1642,7 @@ input[type="color"]{
   }
 
   function deleteTeam(id){
-    const state = load();
+    const state = loadLocal();
     const team = state.teams.find(t => t.id === id);
     if(!team) return;
     if(!confirm('Ta bort "' + team.name + '" + alla spelare i laget?')) return;
@@ -1668,7 +1680,7 @@ input[type="color"]{
   }
 
   function deletePlayer(id){
-    const state = load();
+    const state = loadLocal();
     const player = state.players.find(p => p.id === id);
     if(!player) return;
     if(!confirm('Ta bort "' + player.name + '"?')) return;
@@ -1702,7 +1714,7 @@ input[type="color"]{
   }
 
   function deleteRound(roundId){
-    const state = load();
+    const state = loadLocal();
     const r = state.rounds.find(x => x.id === roundId);
     if(!r) return;
 
@@ -1738,7 +1750,7 @@ input[type="color"]{
   matchType.addEventListener('change', updateMatchUI);
 
   saveMatchBtn.addEventListener('click', () => {
-    const state = load();
+    const state = loadLocal();
     sortTeamsAndPlayers2Lag(state);
 
     state.matches = Array.isArray(state.matches) ? state.matches : [];
@@ -1782,7 +1794,7 @@ input[type="color"]{
   });
 
   document.getElementById('addTeamBtn').addEventListener('click', () => {
-    const state = load();
+    const state = loadLocal();
     if((state.teams || []).length >= 2){
       alert('Max 2 lag. Ta bort ett lag om du vill byta.');
       return;
@@ -1807,7 +1819,7 @@ input[type="color"]{
   const toggleAllTeamsBtn = document.getElementById('toggleAllTeamsBtn');
   if(toggleAllTeamsBtn){
     toggleAllTeamsBtn.addEventListener('click', () => {
-      const state = load();
+      const state = loadLocal();
       const mode = toggleAllTeamsBtn.dataset.mode || 'collapse';
       setAllTeamsOpen(state, mode === 'expand');
       render(state);
@@ -1817,7 +1829,7 @@ input[type="color"]{
   const toggleAllRoundsBtn = document.getElementById('toggleAllRoundsBtn');
   if(toggleAllRoundsBtn){
     toggleAllRoundsBtn.addEventListener('click', () => {
-      const state = load();
+      const state = loadLocal();
       const mode = toggleAllRoundsBtn.dataset.mode || 'collapse';
       setAllRoundsOpen(state, mode === 'expand');
       render(state);
@@ -1828,7 +1840,7 @@ input[type="color"]{
     const name = teamName.value.trim();
     if(!name) return;
 
-    const state = load();
+    const state = loadLocal();
     state.teams = Array.isArray(state.teams) ? state.teams : [];
 
     if(!editingTeamId && state.teams.length >= 2){
@@ -1856,7 +1868,7 @@ input[type="color"]{
     const name = playerName.value.trim();
     if(!name) return;
 
-    const state = load();
+    const state = loadLocal();
     state.players = Array.isArray(state.players) ? state.players : [];
 
     if(editingPlayerId){
@@ -1883,7 +1895,7 @@ input[type="color"]{
     const course = roundCourse.value.trim();
     if(!date || !course) return;
 
-    const state = load();
+    const state = loadLocal();
     state.rounds = Array.isArray(state.rounds) ? state.rounds : [];
 
     if(editingRoundId){
@@ -1953,7 +1965,7 @@ input[type="color"]{
   }
 
   saveBookBtn.addEventListener('click', () => {
-    const state = load();
+    const state = loadLocal();
     const m = (state.matches || []).find(x => x.id === bookingMatchId);
     if(!m || m.isClosed) return;
 
@@ -1964,7 +1976,7 @@ input[type="color"]{
   });
 
   closeMatchBtn.addEventListener('click', () => {
-    const state = load();
+    const state = loadLocal();
     const m = (state.matches || []).find(x => x.id === bookingMatchId);
     if(!m || m.isClosed) return;
 
@@ -2523,7 +2535,7 @@ input[type="color"]{
 
     if(compInfoSaveBtn){
       compInfoSaveBtn.addEventListener('click', () => {
-        const state = load();
+        const state = loadLocal();
         state.competitionInfoHtml = competitionInfoEditor.innerHTML || '';
         save(state);
       });
@@ -2533,7 +2545,7 @@ input[type="color"]{
       compInfoClearBtn.addEventListener('click', () => {
         if(!confirm('Rensa tävlingsinformationen?')) return;
         competitionInfoEditor.innerHTML = '';
-        const state = load();
+        const state = loadLocal();
         state.competitionInfoHtml = '';
         save(state);
       });
@@ -2595,7 +2607,7 @@ input[type="color"]{
         toggleTeam.textContent = isTeamOpen(t.id) ? 'Dölj' : 'Visa';
         toggleTeam.addEventListener('click', () => {
           expandedTeams[t.id] = !isTeamOpen(t.id);
-          render(load());
+          render(loadLocal());
         });
 
         const addP = document.createElement('button');
@@ -2677,7 +2689,7 @@ input[type="color"]{
             cap.type = 'button';
             cap.textContent = 'Kapten';
             cap.addEventListener('click', () => {
-              const s2 = load();
+              const s2 = loadLocal();
               s2.players.forEach(x => { if(x.teamId === p.teamId) x.isCaptain = false; });
               const pp = s2.players.find(x => x.id === p.id);
               if(pp) pp.isCaptain = true;
@@ -2763,7 +2775,7 @@ input[type="color"]{
         toggleRound.textContent = isRoundOpen(r.id) ? 'Dölj' : 'Visa';
         toggleRound.addEventListener('click', () => {
           expandedRounds[r.id] = !isRoundOpen(r.id);
-          render(load());
+          render(loadLocal());
         });
 
         const addMatch = document.createElement('button');
@@ -2980,7 +2992,7 @@ input[type="color"]{
           reopen.addEventListener('click', () => {
             if(!confirm('Öppna matchen igen?\n\nDetta gör att matchen räknas som ej avslutad och påverkar statistik igen när du avslutar på nytt.')) return;
 
-            const s2 = load();
+            const s2 = loadLocal();
             const mm = (s2.matches || []).find(x => x.id === m.id);
             if(!mm) return;
 
@@ -2995,7 +3007,7 @@ input[type="color"]{
           del.textContent = 'Ta bort';
           del.addEventListener('click', () => {
             if(!confirm('Ta bort matchen?')) return;
-            const s2 = load();
+            const s2 = loadLocal();
             s2.matches = (s2.matches || []).filter(x => x.id !== m.id);
             save(s2);
             render(s2);
@@ -3021,10 +3033,14 @@ input[type="color"]{
     enableStatTableSorting();
   }
 
-  const initial = load();
-  save(initial);
-  initCompetitionInfoEditor();
-  render(initial);
+  // BOOT (fix: hämta från Supabase först, fallback local)
+  (async function boot(){
+    const initial = await loadRemoteOrLocal();
+    await save(initial); // håller remote+local i sync direkt
+    initCompetitionInfoEditor();
+    render(initial);
+  })();
+
 })();
 </script>
 </body>
